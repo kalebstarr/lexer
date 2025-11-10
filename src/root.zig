@@ -1,9 +1,53 @@
 const std = @import("std");
 
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
+const Token = struct {
+    token_type: TokenType,
+};
 
-test "basic add functionality" {
-    try std.testing.expect(add(3, 7) == 10);
-}
+const TokenType = union(enum) {
+    keyword: Keyword,
+    identifier,
+    literal: Literal,
+    operator: Operator,
+    delimiter: Delimiter,
+    special: Special,
+};
+
+const Keyword = enum {
+    control_flow,
+    type_decl,
+    modifier,
+    logic,
+};
+
+const Literal = enum {
+    integer,
+    float,
+    string,
+    character,
+    boolean,
+    none,
+};
+
+const Operator = enum {
+    arithmetic,
+    comparison,
+    logical,
+    bitwise,
+    assignment,
+    unary,
+    ternary,
+    other,
+};
+
+const Delimiter = enum {
+    bracket,
+    separator,
+    arrow,
+};
+
+const Special = enum {
+    eof,
+    newline,
+    indent,
+};
