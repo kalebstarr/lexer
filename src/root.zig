@@ -52,11 +52,90 @@ const Special = enum {
     indent,
 };
 
-fn tokenize(buffer: []const u8, delimiters: []const u8) TokenIterator {
+fn tokenize(allocator: std.mem.Allocator, buffer: []const u8, delimiters: []const u8) !TokenIterator {
+    var token_map = std.StringHashMap(TokenType).init(allocator);
+    try token_map.put("if", TokenType{ .keyword = Keyword.control_flow });
+    try token_map.put("else", TokenType{ .keyword = Keyword.control_flow });
+    try token_map.put("while", TokenType{ .keyword = Keyword.control_flow });
+    try token_map.put("for", TokenType{ .keyword = Keyword.control_flow });
+    try token_map.put("switch", TokenType{ .keyword = Keyword.control_flow });
+    try token_map.put("break", TokenType{ .keyword = Keyword.control_flow });
+    try token_map.put("continue", TokenType{ .keyword = Keyword.control_flow });
+    try token_map.put("return", TokenType{ .keyword = Keyword.control_flow });
+
+    try token_map.put("int", TokenType{ .keyword = Keyword.type_decl });
+    try token_map.put("string", TokenType{ .keyword = Keyword.type_decl });
+    try token_map.put("bool", TokenType{ .keyword = Keyword.type_decl });
+    try token_map.put("void", TokenType{ .keyword = Keyword.type_decl });
+    try token_map.put("class", TokenType{ .keyword = Keyword.type_decl });
+    try token_map.put("struct", TokenType{ .keyword = Keyword.type_decl });
+
+    try token_map.put("public", TokenType{ .keyword = Keyword.modifier });
+    try token_map.put("private", TokenType{ .keyword = Keyword.modifier });
+    try token_map.put("static", TokenType{ .keyword = Keyword.modifier });
+    try token_map.put("const", TokenType{ .keyword = Keyword.modifier });
+
+    try token_map.put("true", TokenType{ .keyword = Keyword.logic });
+    try token_map.put("false", TokenType{ .keyword = Keyword.logic });
+    try token_map.put("null", TokenType{ .keyword = Keyword.logic });
+
+    try token_map.put("+", TokenType{ .operator = Operator.arithmetic });
+    try token_map.put("-", TokenType{ .operator = Operator.arithmetic });
+    try token_map.put("*", TokenType{ .operator = Operator.arithmetic });
+    try token_map.put("/", TokenType{ .operator = Operator.arithmetic });
+    try token_map.put("%", TokenType{ .operator = Operator.arithmetic });
+    try token_map.put("**", TokenType{ .operator = Operator.arithmetic });
+
+    try token_map.put("==", TokenType{ .operator = Operator.comparison });
+    try token_map.put("!=", TokenType{ .operator = Operator.comparison });
+    try token_map.put("<", TokenType{ .operator = Operator.comparison });
+    try token_map.put(">", TokenType{ .operator = Operator.comparison });
+    try token_map.put("<=", TokenType{ .operator = Operator.comparison });
+    try token_map.put(">=", TokenType{ .operator = Operator.comparison });
+    try token_map.put("===", TokenType{ .operator = Operator.comparison });
+    try token_map.put("!==", TokenType{ .operator = Operator.comparison });
+
+    try token_map.put("&&", TokenType{ .operator = Operator.logical });
+    try token_map.put("||", TokenType{ .operator = Operator.logical });
+    try token_map.put("!", TokenType{ .operator = Operator.logical });
+
+    try token_map.put("&", TokenType{ .operator = Operator.bitwise });
+    try token_map.put("|", TokenType{ .operator = Operator.bitwise });
+    try token_map.put("^", TokenType{ .operator = Operator.bitwise });
+    try token_map.put("~", TokenType{ .operator = Operator.bitwise });
+    try token_map.put("<<", TokenType{ .operator = Operator.bitwise });
+    try token_map.put(">>", TokenType{ .operator = Operator.bitwise });
+
+    try token_map.put("=", TokenType{ .operator = Operator.assignment });
+    try token_map.put("+=", TokenType{ .operator = Operator.assignment });
+    try token_map.put("-=", TokenType{ .operator = Operator.assignment });
+    try token_map.put("*=", TokenType{ .operator = Operator.assignment });
+    try token_map.put("/=", TokenType{ .operator = Operator.assignment });
+    try token_map.put("%=", TokenType{ .operator = Operator.assignment });
+    try token_map.put("&=", TokenType{ .operator = Operator.assignment });
+    try token_map.put("|=", TokenType{ .operator = Operator.assignment });
+    try token_map.put("^=", TokenType{ .operator = Operator.assignment });
+    try token_map.put("<<=", TokenType{ .operator = Operator.assignment });
+    try token_map.put(">>=", TokenType{ .operator = Operator.assignment });
+
+    // TODO: Add unary operators
+    // TODO: Add ternary operators
+
+    try token_map.put("(", TokenType{ .delimiter = Delimiter.bracket });
+    try token_map.put(")", TokenType{ .delimiter = Delimiter.bracket });
+    try token_map.put("[", TokenType{ .delimiter = Delimiter.bracket });
+    try token_map.put("]", TokenType{ .delimiter = Delimiter.bracket });
+    try token_map.put("{", TokenType{ .delimiter = Delimiter.bracket });
+    try token_map.put("}", TokenType{ .delimiter = Delimiter.bracket });
+
+    // TODO: Add separator delimiters
+    // TODO: Add arrow delimiters
+
     return .{
         .index = 0,
         .buffer = buffer,
         .delimiter = delimiters,
+        .token_map = token_map,
     };
 }
 
@@ -64,8 +143,13 @@ const TokenIterator = struct {
     buffer: []const u8,
     delimiter: []const u8,
     index: usize,
+    token_map: std.StringHashMap(TokenType),
 
     const Self = @This();
+
+    pub fn deinit(self: *Self) void {
+        self.token_map.deinit();
+    }
 
     pub fn next(self: *Self) ?[]const u8 {
         const result = self.peek() orelse return null;
@@ -108,10 +192,18 @@ const TokenIterator = struct {
 };
 
 test TokenIterator {
-    var it = TokenIterator{ .buffer = "Jest something", .delimiter = " ", .index = 0 };
-    const first = it.next();
-    const second = it.next();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
+    defer {
+        const gpa_status = gpa.deinit();
+        if (gpa_status == .leak) {
+            std.testing.expect(false) catch @panic("TEST FAIL");
+        }
+    }
+    const allocator = gpa.allocator();
 
-    try std.testing.expectEqualStrings("Jest", first.?);
-    try std.testing.expectEqualStrings("something", second.?);
+    var it = try tokenize(allocator, "Jest something", " ");
+    defer it.deinit();
+
+    try std.testing.expectEqualStrings("Jest", it.next().?);
+    try std.testing.expectEqualStrings("something", it.next().?);
 }
