@@ -158,16 +158,19 @@ const TokenIterator = struct {
     }
 
     pub fn peek(self: *Self) ?[]const u8 {
-        while (self.index < self.buffer.len and self.isDelimiter(self.index)) : (self.index += 1) {}
-        const start = self.index;
-        if (start == self.buffer.len) {
+        if (self.index >= self.buffer.len) {
             return null;
         }
 
-        var end = start;
-        while (end < self.buffer.len and !self.isDelimiter(end)) : (end += 1) {}
+        const start = self.index;
 
-        return self.buffer[start..end];
+        if (self.isDelimiter(start)) {
+            return self.buffer[start..(start + 1)];
+        } else {
+            var end = start;
+            while (end < self.buffer.len and !self.isDelimiter(end)) : (end += 1) {}
+            return self.buffer[start..end];
+        }
     }
 
     pub fn rest(self: Self) []const u8 {
@@ -205,5 +208,6 @@ test TokenIterator {
     defer it.deinit();
 
     try std.testing.expectEqualStrings("Jest", it.next().?);
+    try std.testing.expectEqualStrings(" ", it.next().?);
     try std.testing.expectEqualStrings("something", it.next().?);
 }
