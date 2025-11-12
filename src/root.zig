@@ -135,23 +135,35 @@ fn genericTokenize(allocator: std.mem.Allocator, buffer: []const u8, delimiters:
     try token_map.put("\n", TokenType{ .delimiter = Delimiter.newline });
     try token_map.put("\r\n", TokenType{ .delimiter = Delimiter.newline });
 
+    var delimiter_list = std.ArrayList(u8).empty;
+    try delimiter_list.appendSlice(allocator, delimiters);
+    var it = token_map.iterator();
+    while (it.next()) |entry| {
+        if (entry.value_ptr.* == .delimiter) {
+            try delimiter_list.appendSlice(allocator, entry.key_ptr.*);
+        }
+    }
+
     return .{
+        .allocator = allocator,
         .index = 0,
         .buffer = buffer,
-        .delimiter = delimiters,
+        .delimiter = delimiter_list,
         .token_map = token_map,
     };
 }
 
 const TokenIterator = struct {
+    allocator: std.mem.Allocator,
     buffer: []const u8,
-    delimiter: []const u8,
+    delimiter: std.ArrayList(u8),
     index: usize,
     token_map: std.StringHashMap(TokenType),
 
     const Self = @This();
 
     pub fn deinit(self: *Self) void {
+        self.delimiter.deinit(self.allocator);
         self.token_map.deinit();
     }
 
@@ -211,7 +223,7 @@ const TokenIterator = struct {
 
     fn isDelimiter(self: Self, index: usize) bool {
         const item = self.buffer[index];
-        for (self.delimiter) |delimiter_item| {
+        for (self.delimiter.items) |delimiter_item| {
             if (item == delimiter_item) {
                 return true;
             }
@@ -230,7 +242,7 @@ test "TokenIterator with generic token_map" {
     }
     const allocator = gpa.allocator();
 
-    var it = try genericTokenize(allocator, "Jest something if", " ");
+    var it = try genericTokenize(allocator, "Jest something if.", " ");
     defer it.deinit();
 
     var result = it.next();
@@ -243,4 +255,6 @@ test "TokenIterator with generic token_map" {
     try std.testing.expectEqualDeep(Token{ .token_type = .{ .delimiter = .whitespace }, .token_str = " " }, result.?);
     result = it.next();
     try std.testing.expectEqualDeep(Token{ .token_type = .{ .keyword = .control_flow }, .token_str = "if" }, result.?);
+    result = it.next();
+    try std.testing.expectEqualDeep(Token{ .token_type = .{ .delimiter = .separator }, .token_str = "." }, result.?);
 }
