@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Token = struct {
     token_type: TokenType,
+    token_str: []const u8,
 };
 
 const TokenType = union(enum) {
@@ -10,7 +11,7 @@ const TokenType = union(enum) {
     literal: Literal,
     operator: Operator,
     delimiter: Delimiter,
-    special: Special,
+    unknown,
 };
 
 const Keyword = enum {
@@ -44,15 +45,13 @@ const Delimiter = enum {
     bracket,
     separator,
     arrow,
-};
-
-const Special = enum {
-    eof,
+    whitespace,
     newline,
+    eof,
     indent,
 };
 
-fn tokenize(allocator: std.mem.Allocator, buffer: []const u8, delimiters: []const u8) !TokenIterator {
+fn genericTokenize(allocator: std.mem.Allocator, buffer: []const u8, delimiters: []const u8) !TokenIterator {
     var token_map = std.StringHashMap(TokenType).init(allocator);
     try token_map.put("if", TokenType{ .keyword = Keyword.control_flow });
     try token_map.put("else", TokenType{ .keyword = Keyword.control_flow });
@@ -131,6 +130,11 @@ fn tokenize(allocator: std.mem.Allocator, buffer: []const u8, delimiters: []cons
     // TODO: Add separator delimiters
     // TODO: Add arrow delimiters
 
+    try token_map.put(" ", TokenType{ .delimiter = Delimiter.whitespace });
+    try token_map.put(".", TokenType{ .delimiter = Delimiter.separator });
+    try token_map.put("\n", TokenType{ .delimiter = Delimiter.newline });
+    try token_map.put("\r\n", TokenType{ .delimiter = Delimiter.newline });
+
     return .{
         .index = 0,
         .buffer = buffer,
@@ -151,13 +155,13 @@ const TokenIterator = struct {
         self.token_map.deinit();
     }
 
-    pub fn next(self: *Self) ?[]const u8 {
+    pub fn next(self: *Self) ?Token {
         const result = self.peek() orelse return null;
-        self.index += result.len;
+        self.index += result.token_str.len;
         return result;
     }
 
-    pub fn peek(self: *Self) ?[]const u8 {
+    pub fn peek(self: *Self) ?Token {
         if (self.index >= self.buffer.len) {
             return null;
         }
@@ -165,11 +169,33 @@ const TokenIterator = struct {
         const start = self.index;
 
         if (self.isDelimiter(start)) {
-            return self.buffer[start..(start + 1)];
+            const opt_del_token_type = self.token_map.get(self.buffer[start..(start + 1)]);
+            if (opt_del_token_type) |del_token_type| {
+                return .{
+                    .token_type = del_token_type,
+                    .token_str = self.buffer[start..(start + 1)],
+                };
+            }
+            return .{
+                .token_type = TokenType.unknown,
+                .token_str = self.buffer[start..(start + 1)],
+            };
         } else {
             var end = start;
             while (end < self.buffer.len and !self.isDelimiter(end)) : (end += 1) {}
-            return self.buffer[start..end];
+
+            const opt_token_type = self.token_map.get(self.buffer[start..end]);
+            if (opt_token_type) |token_type| {
+                return .{
+                    .token_type = token_type,
+                    .token_str = self.buffer[start..end],
+                };
+            }
+
+            return .{
+                .token_type = TokenType.identifier,
+                .token_str = self.buffer[start..end],
+            };
         }
     }
 
@@ -194,7 +220,7 @@ const TokenIterator = struct {
     }
 };
 
-test TokenIterator {
+test "TokenIterator with generic token_map" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
     defer {
         const gpa_status = gpa.deinit();
@@ -204,10 +230,17 @@ test TokenIterator {
     }
     const allocator = gpa.allocator();
 
-    var it = try tokenize(allocator, "Jest something", " ");
+    var it = try genericTokenize(allocator, "Jest something if", " ");
     defer it.deinit();
 
-    try std.testing.expectEqualStrings("Jest", it.next().?);
-    try std.testing.expectEqualStrings(" ", it.next().?);
-    try std.testing.expectEqualStrings("something", it.next().?);
+    var result = it.next();
+    try std.testing.expectEqualDeep(Token{ .token_type = .identifier, .token_str = "Jest" }, result.?);
+    result = it.next();
+    try std.testing.expectEqualDeep(Token{ .token_type = .{ .delimiter = .whitespace }, .token_str = " " }, result.?);
+    result = it.next();
+    try std.testing.expectEqualDeep(Token{ .token_type = .identifier, .token_str = "something" }, result.?);
+    result = it.next();
+    try std.testing.expectEqualDeep(Token{ .token_type = .{ .delimiter = .whitespace }, .token_str = " " }, result.?);
+    result = it.next();
+    try std.testing.expectEqualDeep(Token{ .token_type = .{ .keyword = .control_flow }, .token_str = "if" }, result.?);
 }
