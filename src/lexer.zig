@@ -1,11 +1,11 @@
 const std = @import("std");
 
-const Token = struct {
+pub const Token = struct {
     token_type: TokenType,
     token_str: []const u8,
 };
 
-const TokenType = union(enum) {
+pub const TokenType = union(enum) {
     keyword: Keyword,
     identifier,
     literal: Literal,
@@ -14,14 +14,14 @@ const TokenType = union(enum) {
     unknown,
 };
 
-const Keyword = enum {
+pub const Keyword = enum {
     control_flow,
     type_decl,
     modifier,
     logic,
 };
 
-const Literal = enum {
+pub const Literal = enum {
     integer,
     float,
     string,
@@ -30,7 +30,7 @@ const Literal = enum {
     none,
 };
 
-const Operator = enum {
+pub const Operator = enum {
     arithmetic,
     comparison,
     logical,
@@ -41,7 +41,7 @@ const Operator = enum {
     other,
 };
 
-const Delimiter = enum {
+pub const Delimiter = enum {
     bracket,
     separator,
     arrow,
@@ -51,7 +51,7 @@ const Delimiter = enum {
     indent,
 };
 
-fn genericTokenize(allocator: std.mem.Allocator, buffer: []const u8, delimiters: []const u8) !TokenIterator {
+pub fn genericTokenize(allocator: std.mem.Allocator, buffer: []const u8, delimiters: []const u8) !TokenIterator {
     const token_map = try initGenericTokenMap(allocator);
 
     var delimiter_list = std.ArrayList(u8).empty;
@@ -72,7 +72,7 @@ fn genericTokenize(allocator: std.mem.Allocator, buffer: []const u8, delimiters:
     };
 }
 
-fn initGenericTokenMap(allocator: std.mem.Allocator) !std.StringHashMap(TokenType) {
+pub fn initGenericTokenMap(allocator: std.mem.Allocator) !std.StringHashMap(TokenType) {
     var token_map = std.StringHashMap(TokenType).init(allocator);
     try token_map.put("if", TokenType{ .keyword = Keyword.control_flow });
     try token_map.put("else", TokenType{ .keyword = Keyword.control_flow });
@@ -159,7 +159,7 @@ fn initGenericTokenMap(allocator: std.mem.Allocator) !std.StringHashMap(TokenTyp
     return token_map;
 }
 
-const TokenIterator = struct {
+pub const TokenIterator = struct {
     allocator: std.mem.Allocator,
     buffer: []const u8,
     delimiter: std.ArrayList(u8),
